@@ -7,6 +7,7 @@ streamlit-authenticator backed by a local YAML credentials file.
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 import streamlit as st
@@ -17,26 +18,27 @@ import yaml
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_CREDENTIALS_PATH = _ROOT / "auth_config.yaml"
 
-# Default credentials written on first run so there is always a
-# working starting point.
-_DEFAULT_CONFIG: dict = {
-    "credentials": {
-        "usernames": {
-            "admin": {
-                "email": "admin@example.com",
-                "first_name": "Admin",
-                "last_name": "User",
-                "password": "admin",
-                "roles": ["admin"],
+
+def _build_default_config() -> dict:
+    """Build the default auth configuration with a random cookie key."""
+    return {
+        "credentials": {
+            "usernames": {
+                "admin": {
+                    "email": "admin@example.com",
+                    "first_name": "Admin",
+                    "last_name": "User",
+                    "password": "admin",
+                    "roles": ["admin"],
+                }
             }
-        }
-    },
-    "cookie": {
-        "expiry_days": 30,
-        "key": "etf_stock_tracker_secret_key",
-        "name": "etf_stock_tracker_auth",
-    },
-}
+        },
+        "cookie": {
+            "expiry_days": 30,
+            "key": secrets.token_hex(32),
+            "name": "etf_stock_tracker_auth",
+        },
+    }
 
 
 def _credentials_path() -> Path:
@@ -48,8 +50,9 @@ def _ensure_config_exists() -> None:
     """Create the default credentials file if it does not yet exist."""
     path = _credentials_path()
     if not path.exists():
+        config = _build_default_config()
         with open(path, "w") as fh:
-            yaml.dump(_DEFAULT_CONFIG, fh, default_flow_style=False)
+            yaml.dump(config, fh, default_flow_style=False)
 
 
 def load_config() -> dict:
@@ -109,17 +112,24 @@ def render_login_page() -> bool:
 
     with register_tab:
         try:
-            result = authenticator.register_user(
+            # register_user returns (email, username, name) on success
+            email, username, name = authenticator.register_user(
                 location="main",
                 pre_authorized=[],
                 captcha=False,
             )
-            # register_user returns a tuple; a non-empty email means success
-            if result and result[0]:
+            if email:
+                # Persist the updated credentials from the authenticator
+                model = authenticator.authentication_controller.authentication_model
+                config["credentials"] = model.credentials
                 save_config(config)
                 st.success("✅ Account created! Please switch to the Login tab.")
         except Exception as exc:  # noqa: BLE001
-            st.error(str(exc))
+            msg = str(exc)
+            if "already" in msg.lower():
+                st.error("❌ Registration failed: that username or email is already taken.")
+            else:
+                st.error(f"❌ Registration failed: {msg}")
 
     return False
 
