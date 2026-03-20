@@ -97,7 +97,9 @@ class DataManager:
 
         df = get_historical_prices(ticker, HISTORICAL_PERIOD, HISTORICAL_INTERVAL)
         if not df.empty:
-            self._save_cache(key, df.to_dict())
+            cache_df = df.loc[:, ~df.columns.duplicated()]
+            cache_df.index = cache_df.index.astype(str)
+            self._save_cache(key, cache_df.to_dict())
         return df
 
     def get_fundamentals(self, ticker: str) -> dict[str, Any]:
