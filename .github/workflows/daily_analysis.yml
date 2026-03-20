@@ -1,0 +1,39 @@
+name: Daily Finance Analysis
+
+on:
+  schedule:
+    - cron: "0 21 * * *"   # 21:00 UTC daily
+  workflow_dispatch:         # allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-and-analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download NLTK VADER lexicon
+        run: python -c "import nltk; nltk.download('vader_lexicon', quiet=True)"
+
+      - name: Fetch data and run analysis
+        run: python main.py --fetch-only
+
+      - name: Upload cached data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-cache-${{ github.run_id }}
+          path: data_cache/
+          retention-days: 7
