@@ -384,7 +384,7 @@ def _compute_projection(
     annual_return = daily_mean * trading_days_per_year
     annual_volatility = daily_std * np.sqrt(trading_days_per_year)
 
-    # Monthly rates
+    # Monthly rates (linear approximation, suitable for estimation purposes)
     monthly_return = annual_return / 12
     monthly_std = annual_volatility / np.sqrt(12)
 
