@@ -4,6 +4,7 @@ An AI-powered finance agent that fetches data from Yahoo Finance, analyzes stock
 
 ## 🚀 Features
 
+- **User authentication** — login / create-account gate powered by `streamlit-authenticator`
 - **~40 pre-loaded tickers** — 26 popular stocks + 16 ETFs
 - **AI Composite Buy Score (0–100)** — combines technical, fundamental, and sentiment analysis
 - **Recommendation categories** — Strong Buy / Buy / Hold / Sell / Strong Sell
@@ -53,6 +54,18 @@ streamlit run src/dashboard/app.py
 
 The dashboard opens at `http://localhost:8501`.
 
+### Authentication
+
+On first launch a default `auth_config.yaml` is created with a single admin account:
+
+| Field | Value |
+|---|---|
+| Username | `admin` |
+| Password | `admin` |
+
+You can create additional accounts via the **Create Account** tab on the login page.
+Credentials are stored locally in `auth_config.yaml` (git-ignored by default).
+
 ### Pre-fetch Data (Optional)
 
 ```bash
@@ -80,6 +93,7 @@ ETF-Stock-Tracker/
 │   │   └── scoring_engine.py        ← composite Buy Score engine
 │   └── dashboard/
 │       ├── app.py               ← Streamlit multi-page application
+│       ├── auth.py              ← login / registration gate
 │       ├── charts.py            ← Plotly chart components
 │       └── components.py        ← reusable UI widgets
 └── .github/workflows/
@@ -143,6 +157,7 @@ Weights can also be adjusted at runtime in the **⚙️ Settings** page of the d
 |---|---|
 | `yfinance` | Yahoo Finance data (free, no API key) |
 | `streamlit` | Dashboard framework |
+| `streamlit-authenticator` | User login, registration, session management |
 | `plotly` | Interactive charts |
 | `pandas` / `numpy` | Data manipulation |
 | `ta` | Technical analysis indicators |

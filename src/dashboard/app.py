@@ -44,6 +44,7 @@ from src.dashboard.charts import (
     sector_heatmap,
     sparkline,
 )
+from src.dashboard.auth import render_login_page, render_logout_button
 from src.dashboard.components import (
     metric_card,
     render_fundamentals_table,
@@ -115,6 +116,8 @@ def _load_data_and_analyze(force: bool = False) -> list[dict[str, Any]]:
 def _render_sidebar(results: list[dict[str, Any]]) -> str:
     with st.sidebar:
         st.title("📈 ETF & Stock AI Tracker")
+        st.caption(f"Logged in as **{st.session_state.get('username', '')}**")
+        render_logout_button()
         st.divider()
 
         page = st.radio(
@@ -618,6 +621,10 @@ def _page_settings() -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # Gate the entire dashboard behind authentication
+    if not render_login_page():
+        return
+
     _init_session_state()
     results = _load_data_and_analyze()
 
