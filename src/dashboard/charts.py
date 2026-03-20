@@ -251,6 +251,71 @@ def sector_heatmap(results: list[dict[str, Any]]) -> go.Figure:
     return fig
 
 
+def investment_projection_chart(
+    months: list[int],
+    conservative: list[float],
+    average: list[float],
+    optimistic: list[float],
+    ticker: str,
+    budget: float,
+) -> go.Figure:
+    """Return a line chart showing projected investment growth across three scenarios."""
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=months,
+            y=conservative,
+            name="Conservative",
+            line=dict(color="#ff8c00", width=2, dash="dash"),
+            hovertemplate="Month %{x}<br>Value: €%{y:,.2f}<extra>Conservative</extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=months,
+            y=average,
+            name="Average",
+            line=dict(color="#00d4aa", width=3),
+            fill="tonexty",
+            fillcolor="rgba(0,212,170,0.08)",
+            hovertemplate="Month %{x}<br>Value: €%{y:,.2f}<extra>Average</extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=months,
+            y=optimistic,
+            name="Optimistic",
+            line=dict(color="#7ec8a0", width=2, dash="dash"),
+            fill="tonexty",
+            fillcolor="rgba(126,200,160,0.08)",
+            hovertemplate="Month %{x}<br>Value: €%{y:,.2f}<extra>Optimistic</extra>",
+        )
+    )
+
+    # Budget baseline
+    fig.add_hline(
+        y=budget,
+        line_dash="dot",
+        line_color="#aaaaaa",
+        annotation_text=f"Initial: €{budget:,.2f}",
+        annotation_position="top left",
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        title=f"{ticker} — Projected Investment Growth",
+        xaxis_title="Months",
+        yaxis_title="Portfolio Value (€)",
+        height=450,
+        margin=dict(l=60, r=40, t=60, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+    )
+    return fig
+
+
 def etf_expense_ratio_chart(etf_results: list[dict[str, Any]]) -> go.Figure:
     """Return a bar chart comparing ETF expense ratios."""
     tickers = [r["ticker"] for r in etf_results if r.get("expense_ratio") is not None]

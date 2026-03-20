@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -36,6 +37,7 @@ from src.analysis.scoring_engine import run_full_analysis
 from src.dashboard.charts import (
     candlestick_with_indicators,
     etf_expense_ratio_chart,
+    investment_projection_chart,
     macd_chart,
     radar_chart,
     score_bar_chart,
@@ -117,7 +119,7 @@ def _render_sidebar(results: list[dict[str, Any]]) -> str:
 
         page = st.radio(
             "Navigate",
-            ["🏠 Overview", "📊 Stock Analysis", "📈 ETF Analysis", "⚙️ Settings"],
+            ["🏠 Overview", "📊 Stock Analysis", "📈 ETF Analysis", "💰 Investment Estimator", "⚙️ Settings"],
         )
 
         st.divider()
@@ -353,6 +355,185 @@ def _render_detailed_analysis(r: dict[str, Any]) -> None:
             st.plotly_chart(radar_chart(radar_scores, ticker), use_container_width=True)
 
 
+def _compute_projection(
+    prices_df: pd.DataFrame,
+    budget: float,
+    months: int,
+) -> dict[str, Any]:
+    """Compute projected investment growth based on historical returns.
+
+    Uses log-returns from the historical price series to derive annualised
+    return and volatility, then projects three scenarios (average ± 1 std‑dev).
+    """
+    if prices_df is None or prices_df.empty or "Close" not in prices_df.columns:
+        return {}
+
+    close = prices_df["Close"].dropna()
+    if len(close) < 2:
+        return {}
+
+    # Daily log-returns
+    log_returns = np.log(close / close.shift(1)).dropna()
+    if log_returns.empty:
+        return {}
+
+    trading_days_per_year = 252
+    daily_mean = float(log_returns.mean())
+    daily_std = float(log_returns.std())
+
+    annual_return = daily_mean * trading_days_per_year
+    annual_volatility = daily_std * np.sqrt(trading_days_per_year)
+
+    # Monthly rates (linear approximation, suitable for estimation purposes)
+    monthly_return = annual_return / 12
+    monthly_std = annual_volatility / np.sqrt(12)
+
+    month_range = list(range(months + 1))
+    conservative_vals: list[float] = []
+    average_vals: list[float] = []
+    optimistic_vals: list[float] = []
+
+    for m in month_range:
+        avg = budget * np.exp(monthly_return * m)
+        con = budget * np.exp((monthly_return - monthly_std) * m)
+        opt = budget * np.exp((monthly_return + monthly_std) * m)
+        average_vals.append(float(avg))
+        conservative_vals.append(float(con))
+        optimistic_vals.append(float(opt))
+
+    return {
+        "months": month_range,
+        "conservative": conservative_vals,
+        "average": average_vals,
+        "optimistic": optimistic_vals,
+        "annual_return": annual_return,
+        "annual_volatility": annual_volatility,
+    }
+
+
+def _page_investment_estimator(results: list[dict[str, Any]]) -> None:
+    st.header("💰 Investment Estimator")
+    st.markdown(
+        "Estimate how your investment could grow over time based on "
+        "historical performance. Select a ticker, enter your budget, "
+        "and choose a time horizon."
+    )
+
+    if not results:
+        st.info("No data yet. Click **Refresh Data** in the sidebar.")
+        return
+
+    all_tickers = sorted([r["ticker"] for r in results])
+
+    # ---- User inputs
+    col_ticker, col_budget, col_period = st.columns([2, 2, 2])
+
+    with col_ticker:
+        selected_ticker = st.selectbox(
+            "📌 Ticker",
+            options=all_tickers,
+            key="estimator_ticker",
+        )
+
+    with col_budget:
+        budget = st.number_input(
+            "💶 Budget (€)",
+            min_value=1.0,
+            max_value=10_000_000.0,
+            value=500.0,
+            step=50.0,
+            key="estimator_budget",
+        )
+
+    period_options = {
+        "6 Months": 6,
+        "1 Year": 12,
+        "2 Years": 24,
+        "3 Years": 36,
+        "5 Years": 60,
+        "10 Years": 120,
+    }
+    with col_period:
+        period_label = st.selectbox(
+            "📅 Time Horizon",
+            options=list(period_options.keys()),
+            index=1,
+            key="estimator_period",
+        )
+    months = period_options[period_label]
+
+    r = next((x for x in results if x["ticker"] == selected_ticker), None)
+    if r is None:
+        st.warning("Ticker not found in current analysis results.")
+        return
+
+    prices_df = r.get("prices_df")
+    projection = _compute_projection(prices_df, budget, months)
+
+    if not projection:
+        st.warning(
+            f"Not enough historical price data for **{selected_ticker}** to compute a projection."
+        )
+        return
+
+    st.divider()
+
+    # ---- Projection chart
+    fig = investment_projection_chart(
+        months=projection["months"],
+        conservative=projection["conservative"],
+        average=projection["average"],
+        optimistic=projection["optimistic"],
+        ticker=selected_ticker,
+        budget=budget,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ---- Summary metrics
+    st.subheader("📊 Projected Outcomes")
+    final_avg = projection["average"][-1]
+    final_con = projection["conservative"][-1]
+    final_opt = projection["optimistic"][-1]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            "🔻 Conservative",
+            f"€{final_con:,.2f}",
+            delta=f"{(final_con / budget - 1) * 100:+.1f}%",
+        )
+    with col2:
+        st.metric(
+            "📈 Average",
+            f"€{final_avg:,.2f}",
+            delta=f"{(final_avg / budget - 1) * 100:+.1f}%",
+        )
+    with col3:
+        st.metric(
+            "🔺 Optimistic",
+            f"€{final_opt:,.2f}",
+            delta=f"{(final_opt / budget - 1) * 100:+.1f}%",
+        )
+
+    st.divider()
+
+    # ---- Historical statistics
+    st.subheader("📉 Historical Statistics")
+    annual_ret = projection["annual_return"]
+    annual_vol = projection["annual_volatility"]
+    stat_c1, stat_c2, stat_c3 = st.columns(3)
+    stat_c1.metric("Annualised Return", f"{annual_ret * 100:.1f}%")
+    stat_c2.metric("Annualised Volatility", f"{annual_vol * 100:.1f}%")
+    stat_c3.metric("Buy Score", f"{r.get('buy_score', 0):.0f}/100")
+
+    st.caption(
+        "⚠️ **Disclaimer:** Projections are based on historical performance and "
+        "do not guarantee future results. The conservative and optimistic scenarios "
+        "represent ±1 standard deviation from the historical average. "
+        "Always do your own research before investing."
+    )
+
+
 def _page_settings() -> None:
     st.header("⚙️ Settings")
 
@@ -448,6 +629,8 @@ def main() -> None:
         _page_stock_analysis(results)
     elif page == "📈 ETF Analysis":
         _page_etf_analysis(results)
+    elif page == "💰 Investment Estimator":
+        _page_investment_estimator(results)
     elif page == "⚙️ Settings":
         _page_settings()
 
